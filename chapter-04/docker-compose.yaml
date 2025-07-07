@@ -1,0 +1,156 @@
+services:
+
+  postgres:
+    image: postgres:16
+    hostname: postgres
+    container_name: postgres
+    networks:
+      iceberg_net:
+    ports:
+      - 5432:5432
+    environment:
+      - POSTGRES_USER=postgresuser
+      - POSTGRES_PASSWORD=postgrespw
+      - POSTGRES_DB=oneshop
+      - PGPASSWORD=postgrespw
+    volumes:
+      - ./postgres/postgres_bootstrap.sql:/docker-entrypoint-initdb.d/postgres_bootstrap.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgresuser -d oneshop"]
+      interval: 1s
+      start_period: 60s
+  spark-iceberg:
+    image: tabulario/spark-iceberg
+    container_name: spark-iceberg
+    networks:
+      iceberg_net:
+    depends_on:
+      - rest
+      - minio
+    volumes:
+      - ./spark/scripts:/home/iceberg/pyspark/scripts
+      - ./notebooks:/home/iceberg/notebooks
+      - ./spark/jars:/home/iceberg/pyspark/jars
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    ports:
+      - 8888:8888
+      - 8080:8080
+      - 10000:10000
+      - 10001:10001
+    
+  rest:
+    image: apache/iceberg-rest-fixture
+    container_name: iceberg-rest
+    networks:
+      iceberg_net:
+    ports:
+      - 8181:8181
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+      - CATALOG_WAREHOUSE=s3://warehouse/
+      - CATALOG_IO__IMPL=org.apache.iceberg.aws.s3.S3FileIO
+      - CATALOG_S3_ENDPOINT=http://minio:9000
+  
+  minio:
+    image: minio/minio
+    container_name: minio
+    environment:
+      - MINIO_ROOT_USER=admin
+      - MINIO_ROOT_PASSWORD=password
+      - MINIO_DOMAIN=minio
+    networks:
+      iceberg_net:
+        aliases:
+          - warehouse.minio
+    ports:
+      - 9001:9001
+      - 9000:9000
+    command: ["server", "/data", "--console-address", ":9001"]
+  
+  mc:
+    depends_on:
+      - minio
+    image: minio/mc
+    container_name: mc
+    networks:
+      iceberg_net:
+    environment:
+      - AWS_ACCESS_KEY_ID=admin
+      - AWS_SECRET_ACCESS_KEY=password
+      - AWS_REGION=us-east-1
+    entrypoint: |
+      /bin/sh -c "
+      until (/usr/bin/mc config host add minio http://minio:9000 admin password) do echo '...waiting...' && sleep 1; done;
+      /usr/bin/mc rm -r --force minio/warehouse;
+      /usr/bin/mc mb minio/warehouse;
+      /usr/bin/mc policy set public minio/warehouse;
+      tail -f /dev/null
+      "
+  
+  loadgen:
+    build: loadgen
+    container_name: loadgen
+    init: true
+    networks:
+      iceberg_net:
+    depends_on:
+      postgres: {condition: service_healthy}
+
+  trino:
+    image: 'trinodb/trino'
+    hostname: trino
+    container_name: trino
+    volumes:
+      - ./trino/etc/catalog:/etc/trino/catalog
+      - ./iceberg-schema-gold.sql:/opt/trino/iceberg-schema-gold.sql
+    ports:
+      - '9090:8080'
+    networks:
+      iceberg_net:
+  
+  superset:
+    build: ./superset
+    container_name: superset
+    environment:
+      - SUPERSET_SECRET_KEY=mysecretkey
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=admin
+      - ADMIN_FIRST_NAME=Superset
+      - ADMIN_LAST_NAME=Admin
+      - ADMIN_EMAIL=admin@example.com
+      - DATABASE_URL=postgresql+psycopg2://superset:superset@superset-db:5432/superset
+    depends_on:
+      - superset-db
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./superset/superset_home:/app/superset_home
+    networks:
+      iceberg_net:
+    command: >
+      /bin/sh -c "
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Superset --lastname Admin --email admin@example.com --password admin || true &&
+      superset init &&
+      superset run -h 0.0.0.0 -p 8088
+      "
+
+  superset-db:
+    image: postgres:15
+    container_name: superset-db
+    environment:
+      POSTGRES_DB: superset
+      POSTGRES_USER: superset
+      POSTGRES_PASSWORD: superset
+    volumes:
+      - ./superset/superset_db_data:/var/lib/postgresql/data
+    networks:
+      iceberg_net:
+
+networks:
+  iceberg_net:

@@ -1,0 +1,12 @@
+{
+    "id": 51,
+    "user_id": 411,
+    "item_id": 300,
+    "campaign_id": "FLASH2025",
+    "status": 1,
+    "quantity": 1,
+    "purchase_price": 49.99,
+    "deleted": false,
+    "created_at": 1748502285528056,
+    "updated_at": 1748502285528056
+}
