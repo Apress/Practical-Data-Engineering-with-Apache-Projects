@@ -1,0 +1,4 @@
+barnum==0.5.1
+psycopg2==2.9.1
+noise==1.2.2
+minio==7.0.3
