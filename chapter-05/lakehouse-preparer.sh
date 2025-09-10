@@ -2,6 +2,13 @@
 
 set -e
 
+if [ ! -f ./spark/jars/aws-java-sdk-bundle-1.11.1026.jar ]; then
+  echo "Downloading aws-java-sdk-bundle jar..."
+  curl -L -o ./spark/jars/aws-java-sdk-bundle-1.11.1026.jar https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar
+else
+  echo "aws-java-sdk-bundle jar already exists. Skipping download."
+fi
+
 echo "Running notebook to create Iceberg tables..."
 docker-compose exec spark-iceberg jupyter execute /home/iceberg/notebooks/create_iceberg_tables.ipynb
 
