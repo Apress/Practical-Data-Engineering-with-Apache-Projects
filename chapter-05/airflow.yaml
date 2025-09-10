@@ -19,8 +19,6 @@ x-airflow-common:
     - ./airflow/dags:/opt/airflow/dags
   networks:
       iceberg_net:
-  depends_on:
-    - airflow-db
 
 services:
   airflow-db:
@@ -31,9 +29,13 @@ services:
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
-      - ./airflow/db:/var/lib/postgresql/data
+      - airflow_db_data:/var/lib/postgresql/data
     networks:
       iceberg_net:
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 5s
+      retries: 5
 
   airflow-webserver:
     container_name: airflow-webserver
@@ -41,11 +43,17 @@ services:
     ports:
       - "8080:8080"
     command: webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
 
   airflow-scheduler:
     container_name: airflow-scheduler
     <<: *airflow-common
     command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
 
   airflow-init:
     container_name: airflow-init
@@ -55,6 +63,14 @@ services:
         airflow db init &&
         airflow users create --username admin --password admin --firstname Admin --lastname User --role Admin --email admin@example.com
       "
+    depends_on:
+      airflow-db:
+        condition: service_healthy
+
+volumes:
+  airflow_db_data:
 
 networks:
   iceberg_net:
+    external: true
+    name: chapter-05_iceberg_net
