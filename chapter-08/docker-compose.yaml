@@ -23,23 +23,30 @@ services:
       ALLOW_PLAINTEXT_LISTENER: "yes"
   
   jobmanager:
-    image: flink:1.16.0-scala_2.12-java11
+    image: flink:1.17.2-scala_2.12-java11
     container_name: jobmanager
     ports:
       - 8081:8081
     command: jobmanager
+    volumes:
+        - ./flink-sql:/opt/flink/flink-sql
+        - ./flink-connectors/flink-sql-connector-kafka-1.17.2.jar:/opt/flink/lib/flink-sql-connector-kafka-1.17.2.jar
+        - ./ip_geo.csv:/opt/flink/ip_geo.csv
     environment:
       - |
         FLINK_PROPERTIES=
         jobmanager.rpc.address: jobmanager        
 
   taskmanager:
-    image: flink:1.16.0-scala_2.12-java11
+    image: flink:1.17.2-scala_2.12-java11
     container_name: taskmanager
     depends_on:
       - jobmanager
     command: taskmanager
     scale: 1
+    volumes:
+        - ./flink-connectors/flink-sql-connector-kafka-1.17.2.jar:/opt/flink/lib/flink-sql-connector-kafka-1.17.2.jar
+        - ./ip_geo.csv:/opt/flink/ip_geo.csv
     environment:
       - |
         FLINK_PROPERTIES=
